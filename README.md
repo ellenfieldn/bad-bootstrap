@@ -15,6 +15,7 @@ I currently have all this stuff in `c:\tools`. Shocking, I know, given the above
 - `config\` - OhMyPosh config. Surely there's a better place for this!
 - `pwsh\` - Misc powershell scripts that I use. Also my powershell profile.
 - `utility\` - I think this has an older version of my powershell profile + some random scripts to test out profile-related things.
+- `wsl\` - A really incomplete collection of stuff to setup WSL.
 
 ## TODO
 
