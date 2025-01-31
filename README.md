@@ -12,3 +12,9 @@ I currently have all this stuff in `c:\tools`. Shocking, I know, given the above
 
 - `AutoHotKey\` - AutoHotKey v2 scripts. I don't actually use these, but I'm pretty sure I wrote them for a reason.
 - `bootstrap\` - Random scripts that I run to set things up. Little rhyme or reason to be found
+- `config\` - OhMyPosh config. Surely there's a better place for this!
+- `pwsh\` - Misc powershell scripts that I use. Also my powershell profile.
+
+## TODO
+
+- Powershell profile is not portable at all! This should move to my dotfiles repo and get some love.
