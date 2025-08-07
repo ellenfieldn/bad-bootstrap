@@ -3,118 +3,135 @@ using namespace System.Collections.Generic
 using namespace System.Management.Automation
 using namespace System.Management.Automation.Language
 
+# TODO: Consider caching the auto-completion scripts because sometimes generating them is pretty slow.
+
 $script:currentMs = 0
 $script:steps = @{}
 
 function LogStep(
-        [string]$action,
-        [switch]$verbose
-    ) {
+    [string]$action,
+    [switch]$verbose
+) {
     $stepMs = $stopwatch.Elapsed.TotalMilliseconds - $script:currentMs
     $script:steps["$action"] = $stepMs
-    if($verbose) {
+    if ($verbose) {
         Write-Host "$($action): $($stepMs)ms"
     }
     $script:currentMs = $stopwatch.Elapsed.TotalMilliseconds
 }
 
-function Output-Steps() {
+function Show-Steps() {
     $totalMs = $stopwatch.Elapsed.TotalMilliseconds
     $script:steps.GetEnumerator() | Sort-Object -Property Value -Descending | 
-        Format-Table @{
-                'Label'='Action'; 
-                'Expression'={$_.Key}
-            },
-            @{
-                'Label'='Time (ms)'; 
-                'Expression'={$_.Value}
-            },
-            @{
-                'Label'='Percentage'; 
-                'Expression'={[math]::Round(($_.Value / $totalMs) * 100, 2)}
-            }
-        }
+    Format-Table @{
+        'Label'      = 'Action' 
+        'Expression' = { $_.Key }
+    },
+    @{
+        'Label'      = 'Time (ms)' 
+        'Expression' = { $_.Value }
+    },
+    @{
+        'Label'      = 'Percentage' 
+        'Expression' = { [math]::Round(($_.Value / $totalMs) * 100, 2) }
+    }
+}
 
-Write-Host "Loading Profile"
+Write-Host 'Loading Profile'
 $stopwatch = [System.Diagnostics.Stopwatch]::StartNew()
 
 Import-Module PSReadLine
-LogStep "Import-Module PSReadLine"
+LogStep 'Import-Module PSReadLine'
 
 Import-Module -Name Terminal-Icons
-LogStep "Import-Module Terminal-Icons"
+LogStep 'Import-Module Terminal-Icons'
 
-# Git Autocompletion
+# Git Autocompletion + Prompt customization
 Import-Module posh-git
-LogStep "Import-Module posh-git"
+LogStep 'Import-Module posh-git'
 
 # Docker Autocomplete 
 Import-Module DockerCompletion
-LogStep "Import-Module DockerCompletion"
+LogStep 'Import-Module DockerCompletion'
 
-Write-Host "Modules Imported"
+Write-Host 'Modules Imported'
 
-# Podman Autocomplete
-C:\Users\NELLENFIELD\.pwsh\completions\podman.ps1
-LogStep "podman completion"
+# Podman Autocomplete -- I don't always install this one
+if (Get-Command 'podman.exe' -ErrorAction SilentlyContinue) {
+    podman.exe completion powershell | Out-String | Invoke-Expression
+    LogStep 'podman completion'
+}
+
 
 oh-my-posh init pwsh --config C:\tools\config\default.omp.json | Invoke-Expression
-LogStep "oh-my-posh init"
+LogStep 'oh-my-posh init'
 
 # ZOxide for ezpz directory navigation
 Invoke-Expression (& { (zoxide init powershell | Out-String) })
-LogStep "zoxide init"
+LogStep 'zoxide init'
 
 # Autocomplete for Zoxide
 Register-ArgumentCompleter -Native -CommandName z -ScriptBlock {
     param($wordToComplete, $commandAst, $cursorPosition)
-        $commandElements = $commandAst.CommandElements | Select-Object -Expand Value -Skip 1
-        zoxide query --list $commandElements | ForEach-Object {
-            [System.Management.Automation.CompletionResult]::new($_, $_, 'ParameterValue', $_)
-        }
+    $commandElements = $commandAst.CommandElements | Select-Object -Expand Value -Skip 1
+    zoxide query --list $commandElements | ForEach-Object {
+        [System.Management.Automation.CompletionResult]::new($_, $_, 'ParameterValue', $_)
+    }
 }
-LogStep "zoxide completion"
+LogStep 'zoxide completion'
 
 # ZLocation for ezpz directory navigation
 #Import-Module ZLocation
 #LogStep "Import-Module ZLocation"
 #Write-Host -Foreground Green "`n[ZLocation] knows about $((Get-ZLocation).Keys.Count) locations.`n"
 
-#Kubectl autocomplete
-C:\Users\NELLENFIELD\.pwsh\completions\kubectl.ps1
-LogStep "kubectl completion"
+# Kubectl autocomplete
+# C:\Users\NELLENFIELD\.pwsh\completions\kubectl.ps1
+kubectl completion powershell | Out-String | Invoke-Expression
+LogStep 'kubectl completion'
 
-C:\Users\NELLENFIELD\.pwsh\completions\kustomize.ps1
-LogStep "kustomize completion"
+#C:\Users\NELLENFIELD\.pwsh\completions\kustomize.ps1
+kustomize completion powershell | Out-String | Invoke-Expression
+LogStep 'kustomize completion'
 
 # Taskfile.dev completions
-Invoke-Expression  (&task --completion powershell | Out-String)
-LogStep "taskfile.dev completions"
+task --completion powershell | Out-String | Invoke-Expression
+LogStep 'taskfile.dev completions'
+
+# Justfile completions
+just --completions powershell | Out-String | Invoke-Expression
+LogStep 'justfile completions'
+
+# Get fnm installed and configure this
+fnm env --use-on-cd --version-file-strategy=recursive --shell power-shell | Out-String | Invoke-Expression
+fnm completions --shell powershell | Out-String | Invoke-Expression
+LogStep 'fnm completions'
 
 # Powershell completion for OnePassword
-C:\Users\NELLENFIELD\.pwsh\completions\op.ps1
-LogStep "op completion"
+#C:\Users\NELLENFIELD\.pwsh\completions\op.ps1
+op completion powershell | Out-String | Invoke-Expression
+LogStep 'op completion'
 
 # PowerShell autocomplete for winget
 Register-ArgumentCompleter -Native -CommandName winget -ScriptBlock {
     param($wordToComplete, $commandAst, $cursorPosition)
-        [Console]::InputEncoding = [Console]::OutputEncoding = $OutputEncoding = [System.Text.Utf8Encoding]::new()
-        $Local:word = $wordToComplete.Replace('"', '""')
-        $Local:ast = $commandAst.ToString().Replace('"', '""')
-        winget complete --word="$Local:word" --commandline "$Local:ast" --position $cursorPosition | ForEach-Object {
-            [System.Management.Automation.CompletionResult]::new($_, $_, 'ParameterValue', $_)
-        }
+    [Console]::InputEncoding = [Console]::OutputEncoding = $OutputEncoding = [System.Text.Utf8Encoding]::new()
+    $Local:word = $wordToComplete.Replace('"', '""')
+    $Local:ast = $commandAst.ToString().Replace('"', '""')
+    winget complete --word="$Local:word" --commandline "$Local:ast" --position $cursorPosition | ForEach-Object {
+        [System.Management.Automation.CompletionResult]::new($_, $_, 'ParameterValue', $_)
+    }
 }
-LogStep "winget completion"
+LogStep 'winget completion'
 
 # PowerShell parameter completion shim for the dotnet CLI
 Register-ArgumentCompleter -Native -CommandName dotnet -ScriptBlock {
-     param($commandName, $wordToComplete, $cursorPosition)
-         dotnet complete --position $cursorPosition "$wordToComplete" | ForEach-Object {
-            [System.Management.Automation.CompletionResult]::new($_, $_, 'ParameterValue', $_)
-         }
+    param($commandName, $wordToComplete, $cursorPosition)
+    dotnet complete --position $cursorPosition "$wordToComplete" | ForEach-Object {
+        [System.Management.Automation.CompletionResult]::new($_, $_, 'ParameterValue', $_)
+    }
 }
-LogStep "dotnet completion"
+LogStep 'dotnet completion'
 
 # Powershell parameter completion for Azure CLI
 Register-ArgumentCompleter -Native -CommandName az -ScriptBlock {
@@ -130,21 +147,23 @@ Register-ArgumentCompleter -Native -CommandName az -ScriptBlock {
     $env:_ARGCOMPLETE_SHELL = 'powershell'
     az 2>&1 | Out-Null
     Get-Content $completion_file | Sort-Object | ForEach-Object {
-        [System.Management.Automation.CompletionResult]::new($_, $_, "ParameterValue", $_)
+        [System.Management.Automation.CompletionResult]::new($_, $_, 'ParameterValue', $_)
     }
     Remove-Item $completion_file, Env:\_ARGCOMPLETE_STDOUT_FILENAME, Env:\ARGCOMPLETE_USE_TEMPFILES, Env:\COMP_LINE, Env:\COMP_POINT, Env:\_ARGCOMPLETE, Env:\_ARGCOMPLETE_SUPPRESS_SPACE, Env:\_ARGCOMPLETE_IFS, Env:\_ARGCOMPLETE_SHELL
 }
-LogStep "az completion"
+LogStep 'az completion'
 
 Set-PSReadLineKeyHandler -Key UpArrow -Function HistorySearchBackward
 Set-PSReadLineKeyHandler -Key DownArrow -Function HistorySearchForward
+Set-PSReadLineKeyHandler -Key LeftArrow -Function BackwardChar
+Set-PSReadLineKeyHandler -Key RightArrow -Function ForwardChar
 
-# `ForwardChar` accepts the entire suggestion text when the cursor is at the end of the line.
-# This custom binding makes `RightArrow` behave similarly - accepting the next word instead of the entire suggestion text.
+# RightArrow uses `ForwardChar` or accepts the entire suggestion text when the cursor is at the end of the line.
+# This custom binding makes `Ctrl+RightArrow` behave similarly - accepting the next word instead of the entire suggestion text.
 Set-PSReadLineKeyHandler -Key Ctrl+RightArrow `
-                         -BriefDescription ForwardCharAndAcceptNextSuggestionWord `
-                         -LongDescription "Move cursor one character to the right in the current editing line and accept the next word in suggestion when it's at the end of current editing line" `
-                         -ScriptBlock {
+    -BriefDescription ForwardWordAndAcceptNextSuggestionWord `
+    -LongDescription "Move cursor one word to the right in the current editing line and accept the next word in suggestion when it's at the end of current editing line" `
+    -ScriptBlock {
     param($key, $arg)
 
     $line = $null
@@ -152,7 +171,7 @@ Set-PSReadLineKeyHandler -Key Ctrl+RightArrow `
     [Microsoft.PowerShell.PSConsoleReadLine]::GetBufferState([ref]$line, [ref]$cursor)
 
     if ($cursor -lt $line.Length) {
-        [Microsoft.PowerShell.PSConsoleReadLine]::ForwardChar($key, $arg)
+        [Microsoft.PowerShell.PSConsoleReadLine]::ForwardWord($key, $arg)
     } else {
         [Microsoft.PowerShell.PSConsoleReadLine]::AcceptNextSuggestionWord($key, $arg)
     }
@@ -162,16 +181,17 @@ Set-PSReadLineKeyHandler -Key Ctrl+f -Function SwitchPredictionView
 Set-Alias -Name cf -Value SwitchPredictionView
 
 Set-PSReadLineOption -MaximumHistoryCount 5000 -HistoryNoDuplicates
+Set-PSReadLineOption -PredictionSource HistoryAndPlugin
 
 function Set-DockerConfig {
     param(
         [string]$targetOS
     )
 
-    if ($targetOS -eq "Windows") {
-        $dockerContext = "windows"
+    if ($targetOS -eq 'Windows') {
+        $dockerContext = 'windows'
     } else {
-        $dockerContext = "linux"
+        $dockerContext = 'linux'
     }
 
     # Set the docker context
@@ -186,8 +206,8 @@ function Get-DockerHost {
     $currentHost
 }
 
-function Use-WindowsContainers { Set-DockerConfig -targetOS "Windows" }
-function Use-LinuxContainers { Set-DockerConfig -targetOS "Linux" }
+function Use-WindowsContainers { Set-DockerConfig -targetOS 'Windows' }
+function Use-LinuxContainers { Set-DockerConfig -targetOS 'Linux' }
 
 Set-Alias -Name wc -Value Use-WindowsContainers
 Set-Alias -Name lc -Value Use-LinuxContainers
@@ -201,8 +221,8 @@ function Reset-DockerHost {
     $env:DOCKER_HOST = $null
 }
 
-
-Set-Alias msbuild "C:\Program Files\Microsoft Visual Studio\2022\Preview\MSBuild\Current\bin\msbuild.exe"
+# TODO, fix the msbuild path
+Set-Alias msbuild 'C:\Program Files\Microsoft Visual Studio\2022\Preview\MSBuild\Current\bin\msbuild.exe'
 
 
 
@@ -238,7 +258,7 @@ class RepoCompletionsAttribute : ArgumentCompleterAttribute, IArgumentCompleterF
     [string] $RepoBasePath
 
     RepoCompletionsAttribute() {
-        $this.RepoBasePath = "$env:USERPROFILE/source/repos"
+        $this.RepoBasePath = 'C:/work/repos'
     }
 
     [IArgumentCompleter] Create() { return [RepoCompleter]::new($this.RepoBasePath) }
@@ -278,7 +298,7 @@ function Get-RepoPath {
     param(
         [string]$repoName
     )
-    # $repoPath = "~\source\repos\$repoName" does not work with vs code for some reason.
+    # Note: $repoPath = "~\source\repos\$repoName" does not work with vs code for some reason.
     "$env:USERPROFILE/source/repos/$repoName"
 }
 
@@ -287,84 +307,103 @@ function listr {
     Get-ChildItem -Directory -Path $repoPath | Select-Object -ExpandProperty Name
 }
 
-function Out-Completion {
-    [cmdletbinding()]
-    param(
-        [Parameter(Mandatory = $true, ValueFromPipeline = $true)]
-        [ValidatePattern("^\w+$")] 
-        [string[]]$command,
+# TODO: Revisit this later if I need to optimize completion generation
+# function Out-Completion {
+#     [cmdletbinding()]
+#     param(
+#         [Parameter(Mandatory = $true, ValueFromPipeline = $true)]
+#         [ValidatePattern("^\w+$")] 
+#         [string[]]$command,
 
-        [Parameter(Mandatory = $false)]
-        [string[]]$commandArgs = @("completion", "powershell"),
+#         [Parameter(Mandatory = $false)]
+#         [string[]]$commandArgs = @("completion", "powershell"),
 
-        [Parameter(Mandatory = $false)]
-        [string]$completionDir = "$HOME\.pwsh\completions"
-    )
-    Begin {
-        $InformationPreference = "Continue"
-        $ErrorActionPreference = 'Stop'
-        Write-Information `n"Saving shell completions to $completionDir"
-    }
-    Process {
-        foreach ($c in $command) {
-            $completionLocation = join-path $completionDir "$c.ps1"
+#         [Parameter(Mandatory = $false)]
+#         [string]$completionDir = "$HOME\.pwsh\completions"
+#     )
+#     Begin {
+#         $InformationPreference = "Continue"
+#         $ErrorActionPreference = 'Stop'
+#         Write-Information `n"Saving shell completions to $completionDir"
+#     }
+#     Process {
+#         foreach ($c in $command) {
+#             $completionLocation = join-path $completionDir "$c.ps1"
 
-            Write-Information "> $c $commandArgs"
-            & $command @commandArgs > $completionLocation
-        }
-    }
-    End {
-        Write-Host "`nDone!"
-    }
-}
+#             Write-Information "> $c $commandArgs"
+#             & $command @commandArgs > $completionLocation
+#         }
+#     }
+#     End {
+#         Write-Host "`nDone!"
+#     }
+# }
 
-function Get-Completions {
-    param(
-        [string]$command,
-        [string]$completionDir = "$HOME\.pwsh\completions"
-    )
-    Get-Content -Path (Join-Path $completionDir "$command.ps1") -Raw
-}
+# function Get-Completions {
+#     param(
+#         [string]$command,
+#         [string]$completionDir = "$HOME\.pwsh\completions"
+#     )
+#     Get-Content -Path (Join-Path $completionDir "$command.ps1") -Raw
+# }
 
-function Set-Completions {
-    param(
-        [string]$command,
-        [string]$completionContent,
-        [string]$completionDir = "$HOME\.pwsh\completions"
-    )
-    $completionContent | Out-File -FilePath (Join-Path $completionDir "$command.ps1")
-}
+# function Set-Completions {
+#     param(
+#         [string]$command,
+#         [string]$completionContent,
+#         [string]$completionDir = "$HOME\.pwsh\completions"
+#     )
+#     $completionContent | Out-File -FilePath (Join-Path $completionDir "$command.ps1")
+# }
 
-function Install-Completions {
-    $commands = @("kubectl", "kustomize", "op", "podman")
-    $commands | Out-Completion
+# function Install-Completions {
+#     $commands = @("kubectl", "kustomize", "op", "podman")
+#     $commands | Out-Completion
 
-    #podman is special... We have to fix it up a little bit
-    Write-Host "`nFixing up podman completions..."
-    $podmanCompletions = (Get-Completions "podman").Replace('podman.exe','podman').Replace('PODMAN.EXE','PODMAN') 
-    Set-Completions -command "podman" -completionContent $podmanCompletions
-    Write-Host "`nDone!"
-}
+#     #podman is special... We have to fix it up a little bit
+#     Write-Host "`nFixing up podman completions..."
+#     $podmanCompletions = (Get-Completions "podman").Replace('podman.exe','podman').Replace('PODMAN.EXE','PODMAN') 
+#     Set-Completions -command "podman" -completionContent $podmanCompletions
+#     Write-Host "`nDone!"
+# }
 
-Set-Alias -Name oc -Value Out-Completion
+# Set-Alias -Name oc -Value Out-Completion
 
-
-function Find-VisualStudio() {
-    Write-Information "Finding VisualStudio .exe path"
-    $vsWherePath = join-path ${env:ProgramFiles(x86)} "\Microsoft Visual Studio\Installer\vswhere.exe"
+# Function to find vswhere
+# TODO: Is it better to just add it to the path instead?
+function Find-VSWhere {
+    Write-Information 'Finding vswhere.exe path'
+    $vsWherePath = Join-Path ${env:ProgramFiles(x86)} '\Microsoft Visual Studio\Installer\vswhere.exe'
     Write-Debug "Checking for vswhere.exe at $vsWherePath"
     if (-not (Test-Path $vsWherePath)) {
         Write-Error "vswhere.exe not found at $vsWherePath"
         exit 1
     }
 
-    Write-Debug "Finding VisualStudio Installation Location using:"
+    Write-Debug 'Found vswhere.exe at $vsWherePath'
+    return $vsWherePath
+}
 
-    $vsWhereArgs = @("-products", "*", "-property", "productPath", "-latest")
+# Function to wrap calls to vswhere.
+# This function will pass through all arguments to vswhere
+function Invoke-VSWhere {
+    $vsWherePath = Find-VSWhere
+    & $vsWherePath @args
+}
+
+Set-Alias -Name vswhere -Value Invoke-VSWhere
+
+function Find-VisualStudio() {
+    $vsWherePath = Find-VSWhere
+
+    Write-Debug 'Finding VisualStudio Installation Location using:'
+
+    # TODO: SSMS breaks this, so we need to find a way to get the devenv.exe path without it.
+    $vsWhereArgs = @('-products', '*', '-property', 'productPath', '-latest')
     Write-Debug "  -> $vsWherePath $vsWhereArgs"
     $vsPath = & $vsWherePath @vsWhereArgs
     if (-not $vsPath) {
-        Write-Error "Failed to find Visual Studio Installation"
+        Write-Error 'Failed to find Visual Studio Installation'
         exit 1
     }
 
@@ -380,12 +419,10 @@ function Open-VisualStudio {
 
 Set-Alias -Name vs -Value Open-VisualStudio
 
-fnm env --use-on-cd --shell power-shell | Out-String | Invoke-Expression
-
-LogStep "The Rest"
+LogStep 'The Rest'
 $stopwatch.Stop()
 
-Output-Steps
+Show-Steps
 
 function Set-Location-RepoRoot {
     $repoPath = git rev-parse --show-toplevel
@@ -394,3 +431,16 @@ function Set-Location-RepoRoot {
 
 Set-Alias -Name rr -Value Set-Location-RepoRoot
 
+#For PowerShell v3
+function gig {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string[]]$list
+    )
+    if (('list', '-l', '--list') -contains $list) {
+        Invoke-WebRequest -Uri 'https://www.toptal.com/developers/gitignore/api/list' | Select-Object -ExpandProperty content
+    } else {
+        $params = ($list | ForEach-Object { [uri]::EscapeDataString($_) }) -join ','
+        Invoke-WebRequest -Uri "https://www.toptal.com/developers/gitignore/api/$params" | Select-Object -ExpandProperty content | Out-File -FilePath $(Join-Path -Path $pwd -ChildPath '.gitignore') -Encoding ascii    
+    }
+}
