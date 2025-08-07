@@ -1,0 +1,490 @@
+# yaml-language-server: $schema=https://aka.ms/configuration-dsc-schema/0.2
+properties:
+  configurationVersion: 0.2.0
+  assertions:
+    - resource: Microsoft.Windows.Developer/OsVersion
+      directives:
+        description: Verify min OS version requirement
+        allowPrerelease: true
+      settings:
+        MinVersion: "10.0.22000"
+  resources:
+    - resource: Microsoft.Windows.Developer/DeveloperMode
+      directives:
+        description: Enable Developer Mode
+        # Requires elevation only for the set operation
+        securityContext: elevated
+        allowPrerelease: true
+      settings:
+        Ensure: Present
+    - resource: Microsoft.Windows.Developer/WindowsExplorer
+      directives:
+        description: Show Files and Extensions
+        allowPrerelease: true
+      settings:
+        FileExtensions: Show
+        HiddenFiles: Show
+        RestartExplorer: True
+    - resource: Microsoft.Windows.Developer/EnableLongPathSupport
+      directives:
+        description: Enable support for long filepaths
+        securityContext: elevated
+        allowPrerelease: true
+      settings:
+        Ensure: Present
+    - resource: Microsoft.Windows.Developer/EnableDarkMode
+      directives:
+        description: Enable Dark Mode
+        allowPrerelease: true
+      settings:
+        Ensure: Present
+        RestartExplorer: true
+    - resource: Microsoft.Windows.Developer/ShowSecondsInClock
+      directives:
+        description: Show seconds in the windows clock
+        allowPrerelease: true
+      settings:
+        Ensure: Present
+    - resource: Microsoft.WinGet.DSC/WinGetPackage
+      id: powershell
+      directives:
+        description: Install PowerShell Core
+        # Requires elevation for the set operation (i.e., installation)
+        securityContext: elevated
+      settings:
+        id: Microsoft.PowerShell
+        source: winget
+    - resource: PSDscResources/Script
+      id: EnableVirtualMachinePlatform
+      directives:
+        description: Enabling VirtualMachinePlatform using DISM
+        securityContext: elevated
+      settings:
+        GetScript: |
+          $output = dism.exe /online /get-featureinfo /featurename:VirtualMachinePlatform
+          return @{
+            Result = $output
+          }
+        TestScript: |
+          $output = dism.exe /online /get-featureinfo /featurename:VirtualMachinePlatform
+          if ($output -match 'State : Enabled') {
+              return $true
+          } else {
+              return $false
+          }
+        SetScript: |
+          dism.exe /online /enable-feature /featurename:VirtualMachinePlatform /all /norestart
+    - resource: PSDscResources/Script
+      id: EnableWSL
+      directives:
+        description: Enabling WSL using DISM
+        securityContext: elevated
+      dependsOn:
+        - EnableVirtualMachinePlatform
+      settings:
+        GetScript: |
+          $output = dism.exe /online /get-featureinfo /featurename:Microsoft-Windows-Subsystem-Linux
+          return @{
+            Result = $output
+          }
+        TestScript: |
+          $output = dism.exe /online /get-featureinfo /featurename:Microsoft-Windows-Subsystem-Linux
+          if ($output -match 'State : Enabled') {
+              return $true
+          } else {
+              return $false
+          }
+        SetScript: |
+          dism.exe /online /enable-feature /featurename:Microsoft-Windows-Subsystem-Linux /all /norestart
+    - resource: PSDscResources/Script
+      id: WSLNoDistro
+      directives:
+        description: Install WSL without a distribution
+        securityContext: elevated
+      dependsOn:
+        - EnableWSL
+      settings:
+        GetScript: |
+          $output = dism.exe /online /get-featureinfo /featurename:Microsoft-Windows-Subsystem-Linux
+          return @{
+            Result = $false
+          }
+        TestScript: |
+          return $false
+        SetScript: |
+          $env:Path = [System.Environment]::GetEnvironmentVariable("Path","Machine") + ";" + [System.Environment]::GetEnvironmentVariable("Path","User")
+          wsl --install --no-distribution
+    - resource: PSDscResources/Script
+      id: UbuntuWSL
+      directives:
+        description: Install Ubuntu
+        securityContext: elevated
+      dependsOn:
+        - WSLNoDistro
+      settings:
+        GetScript: |
+          $output = dism.exe /online /get-featureinfo /featurename:Microsoft-Windows-Subsystem-Linux
+          return @{
+            Result = $false
+          }
+        TestScript: |
+          return $false
+        SetScript: |
+          $env:Path = [System.Environment]::GetEnvironmentVariable("Path","Machine") + ";" + [System.Environment]::GetEnvironmentVariable("Path","User")
+          wsl --install Ubuntu --no-launch
+    - resource: Microsoft.WinGet.DSC/WinGetPackage
+      directives:
+        description: Install 1Password
+      settings:
+        id: AgileBits.1Password
+        source: winget
+    - resource: Microsoft.WinGet.DSC/WinGetPackage
+      directives:
+        description: Install 1Password CLI
+      settings:
+        id: AgileBits.1Password.CLI
+        source: winget
+    - resource: Microsoft.WinGet.DSC/WinGetPackage
+      directives:
+        description: Install PowerToys
+      settings:
+        id: Microsoft.PowerToys
+        source: winget
+    - resource: Microsoft.WinGet.DSC/WinGetPackage
+      id: vscode
+      directives:
+        description: Install Microsoft Visual Studio Code
+      settings:
+        id: Microsoft.VisualStudioCode
+        ensure: Present
+    - resource: Microsoft.VSCode.Dsc/VSCodeExtension
+      id: vscode-githubcopilot
+      directives:
+        description: Install VsCode GitHub Copilot extension
+        allowPrerelease: true
+      settings:
+        Name: GitHub.copilot
+        Exist: Present
+    - resource: Microsoft.VSCode.Dsc/VSCodeExtension
+      id: vscode-githubcopilotchat
+      directives:
+        description: Install VsCode GitHub Copilot Chat extension
+        allowPrerelease: true
+      settings:
+        Name: GitHub.copilot-chat
+        Exist: Present
+    - resource: Microsoft.WinGet.DSC/WinGetPackage
+      id: vsPackage
+      directives:
+        description: Install Visual Studio 2022 Enterprise (Any edition will work)
+        securityContext: elevated
+      settings:
+        id: Microsoft.VisualStudio.2022.Enterprise
+        source: winget
+    - resource: Microsoft.VisualStudio.DSC/VSComponents
+      dependsOn:
+        - vsPackage
+      directives:
+        description: Install required VS workloads
+        allowPrerelease: true
+        # Requires elevation for the get and set operations
+        securityContext: elevated
+      settings:
+        productId: Microsoft.VisualStudio.Product.Enterprise
+        channelId: VisualStudio.17.Release
+        vsConfigFile: '${WinGetConfigRoot}\..\.vsconfig'
+    - resource: Microsoft.WinGet.DSC/WinGetPackage
+      directives:
+        description: Install Git
+        # Requires elevation for the set operation (i.e., for installing the package)
+        securityContext: elevated
+      settings:
+        id: Git.Git
+        source: winget
+    - resource: Microsoft.WinGet.DSC/WinGetPackage
+      directives:
+        description: Install Obsidian
+        # Requires elevation for the set operation (i.e., for installing the package)
+        securityContext: elevated
+      settings:
+        id: Obsidian.Obsidian
+        source: winget
+    - resource: Microsoft.WinGet.DSC/WinGetPackage
+      directives:
+        description: Install SQL Server Management Studio
+        # Requires elevation for the set operation (i.e., for installing the package)
+        securityContext: elevated
+      settings:
+        id: Microsoft.SQLServerManagementStudio.21
+        source: winget
+    - resource: Microsoft.WinGet.DSC/WinGetPackage
+      directives:
+        description: Install Notepad++
+        # Requires elevation for the set operation (i.e., for installing the package)
+        securityContext: elevated
+      settings:
+        id: Notepad++.Notepad++
+        source: winget
+    - resource: Microsoft.WinGet.DSC/WinGetPackage
+      directives:
+        description: Install mRemoteNG
+        # Requires elevation for the set operation (i.e., for installing the package)
+        securityContext: elevated
+      settings:
+        id: mRemoteNG.mRemoteNG
+        source: winget
+    - resource: Microsoft.WinGet.DSC/WinGetPackage
+      directives:
+        description: Install NuGet Package Explorer
+        # Requires elevation for the set operation (i.e., for installing the package)
+        securityContext: elevated
+      settings:
+        id: 9WZDNCRDMDM3
+        # TODO: Presumably this id will change when versioning is fixed
+        source: msstore
+    - resource: Microsoft.WinGet.DSC/WinGetPackage
+      directives:
+        description: Install Draw.io
+        # Requires elevation for the set operation (i.e., for installing the package)
+        securityContext: elevated
+      settings:
+        id: JGraph.Draw
+        source: winget
+    - resource: Microsoft.WinGet.DSC/WinGetPackage
+      directives:
+        description: Install Vivaldi Browser
+        # Requires elevation for the set operation (i.e., for installing the package)
+        securityContext: elevated
+      settings:
+        id: Vivaldi.Vivaldi
+        source: winget
+    - resource: Microsoft.WinGet.DSC/WinGetPackage
+      directives:
+        description: Install 7zip
+        # Requires elevation for the set operation (i.e., for installing the package)
+        securityContext: elevated
+      settings:
+        id: 7zip.7zip
+        source: winget
+    - resource: Microsoft.WinGet.DSC/WinGetPackage
+      directives:
+        description: Install Docker CLI
+        # Requires elevation for the set operation (i.e., for installing the package)
+        securityContext: elevated
+      settings:
+        id: Docker.DockerCLI
+        source: winget
+    - resource: Microsoft.WinGet.DSC/WinGetPackage
+      directives:
+        description: Install Zoxide
+        # Requires elevation for the set operation (i.e., for installing the package)
+        securityContext: elevated
+      settings:
+        id: ajeetdsouza.zoxide
+        source: winget
+    - resource: Microsoft.WinGet.DSC/WinGetPackage
+      directives:
+        description: Install FZF
+        # Requires elevation for the set operation (i.e., for installing the package)
+        securityContext: elevated
+      settings:
+        id: junegunn.fzf
+        source: winget
+    - resource: Microsoft.WinGet.DSC/WinGetPackage
+      directives:
+        description: Install GitHub CLI
+        # Requires elevation for the set operation (i.e., for installing the package)
+        securityContext: elevated
+      settings:
+        id: GitHub.cli
+        source: winget
+    - resource: Microsoft.WinGet.DSC/WinGetPackage
+      directives:
+        description: Install Lazygit
+        # Requires elevation for the set operation (i.e., for installing the package)
+        securityContext: elevated
+      settings:
+        id: JesseDuffield.lazygit
+        source: winget
+    - resource: Microsoft.WinGet.DSC/WinGetPackage
+      directives:
+        description: Install Lazydocker
+        # Requires elevation for the set operation (i.e., for installing the package)
+        securityContext: elevated
+      settings:
+        id: JesseDuffield.Lazydocker
+        source: winget
+    - resource: Microsoft.WinGet.DSC/WinGetPackage
+      directives:
+        description: Install Chezmoi
+        # Requires elevation for the set operation (i.e., for installing the package)
+        securityContext: elevated
+      settings:
+        id: twpayne.chezmoi
+        source: winget
+    - resource: Microsoft.WinGet.DSC/WinGetPackage
+      directives:
+        description: Install Micro
+        # Requires elevation for the set operation (i.e., for installing the package)
+        securityContext: elevated
+      settings:
+        id: zyedidia.micro
+        source: winget
+    - resource: Microsoft.WinGet.DSC/WinGetPackage
+      id: azurecli
+      directives:
+        description: Install Azure CLI
+        # Requires elevation only for the set operation (i.e., installing the package)
+        securityContext: elevated
+      settings:
+        id: Microsoft.AzureCLI
+    - resource: Microsoft.WinGet.DSC/WinGetPackage
+      id: kubectl
+      directives:
+        description: Install kubectl
+        # Requires elevation only for the set operation (i.e., installing the package)
+        securityContext: elevated
+      settings:
+        id: Kubernetes.kubectl
+    - resource: Microsoft.WinGet.DSC/WinGetPackage
+      id: kustomize
+      directives:
+        description: Install Kustomize
+        # Requires elevation only for the set operation (i.e., installing the package)
+        securityContext: elevated
+      settings:
+        id: Kubernetes.kustomize
+    - resource: Microsoft.WinGet.DSC/WinGetPackage
+      id: terraform
+      directives:
+        description: Install Terraform CLI
+        # Requires elevation only for the set operation (i.e., installing the package)
+        securityContext: elevated
+      settings:
+        id: Hashicorp.Terraform
+    - resource: Microsoft.WinGet.DSC/WinGetPackage
+      id: githubdesktop
+      directives:
+        description: Install GitHub Desktop
+        # Requires elevation only for the set operation (i.e., installing the package)
+        securityContext: elevated
+      settings:
+        id: GitHub.GitHubDesktop
+    - resource: Microsoft.WinGet.DSC/WinGetPackage
+      id: nuget
+      directives:
+        description: Install nuget.exe
+        # Requires elevation only for the set operation (i.e., installing the package)
+        securityContext: elevated
+      settings:
+        id: Microsoft.NuGet
+    - resource: Microsoft.WinGet.DSC/WinGetPackage
+      id: jq
+      directives:
+        description: Install jq
+        # Requires elevation only for the set operation (i.e., installing the package)
+        securityContext: elevated
+      settings:
+        id: jqlang.jq
+    - resource: Microsoft.WinGet.DSC/WinGetPackage
+      id: yq
+      directives:
+        description: Install yq
+        # Requires elevation only for the set operation (i.e., installing the package)
+        securityContext: elevated
+      settings:
+        id: MikeFarah.yq
+    # Add Microsoft Sysinternals tools
+    - resource: Microsoft.WinGet.DSC/WinGetPackage
+      directives:
+        description: Install TCPView
+        securityContext: elevated
+      settings:
+        id: Microsoft.Sysinternals.TCPView
+        source: winget
+    - resource: Microsoft.WinGet.DSC/WinGetPackage
+      directives:
+        description: Install Autoruns
+        securityContext: elevated
+      settings:
+        id: Microsoft.Sysinternals.Autoruns
+        source: winget
+    - resource: Microsoft.WinGet.DSC/WinGetPackage
+      directives:
+        description: Install Handle
+        securityContext: elevated
+      settings:
+        id: Microsoft.Sysinternals.Handle
+        source: winget
+    - resource: Microsoft.WinGet.DSC/WinGetPackage
+      directives:
+        description: Install Process Explorer
+        securityContext: elevated
+      settings:
+        id: Microsoft.Sysinternals.ProcessExplorer
+        source: winget
+    - resource: Microsoft.WinGet.DSC/WinGetPackage
+      directives:
+        description: Install Process Monitor
+        securityContext: elevated
+      settings:
+        id: Microsoft.Sysinternals.ProcessMonitor
+        source: winget
+    - resource: Microsoft.WinGet.DSC/WinGetPackage
+      directives:
+        description: Install RDCMan
+        securityContext: elevated
+      settings:
+        id: Microsoft.Sysinternals.RDCMan
+        source: winget
+    - resource: Microsoft.WinGet.DSC/WinGetPackage
+      directives:
+        description: Install Sysmon
+        securityContext: elevated
+      settings:
+        id: Microsoft.Sysinternals.Sysmon
+        source: winget
+    - resource: Microsoft.WinGet.DSC/WinGetPackage
+      id: Install Fiddler Classic
+      directives:
+        description: Install Fiddler Classic
+        securityContext: elevated
+      settings:
+        id: Telerik.Fiddler.Classic
+    - resource: Microsoft.WinGet.DSC/WinGetPackage
+      id: Install Oh My Posh
+      directives:
+        description: Install Oh My Posh
+        securityContext: elevated
+      settings:
+        id: JanDeDobbeleer.OhMyPosh
+    - resource: Microsoft.WinGet.DSC/WinGetPackage
+      id: Install Taskfile.dev
+      directives:
+        description: Install Taskfile.dev
+        securityContext: elevated
+      settings:
+        id: Task.Task
+    - resource: Microsoft.WinGet.DSC/WinGetPackage
+      id: Install Just
+      directives:
+        description: Install Just
+        securityContext: elevated
+      settings:
+        id: CaseysJust.just
+    - resource: Microsoft.WinGet.DSC/WinGetPackage
+      id: fnm
+      directives:
+        description: Install fnm (Fast Node Manager)
+        securityContext: elevated
+      settings:
+        id: Schniz.fnm
+        source: winget
+    - resource: Microsoft.WinGet.DSC/WinGetPackage
+      id: slack
+      directives:
+        description: Install Slack
+        securityContext: elevated
+      settings:
+        id: SlackTechnologies.Slack
+        source: winget
