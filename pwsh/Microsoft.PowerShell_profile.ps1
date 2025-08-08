@@ -5,6 +5,10 @@ using namespace System.Management.Automation.Language
 
 # TODO: Consider caching the auto-completion scripts because sometimes generating them is pretty slow.
 
+$repoBasePath = 'C:\work\repos'
+$configBasePath = 'C:\tools\config'
+#$completionBasePath = "$HOME\.pwsh\completions" # Or maybe these just go in $configBasePath?
+
 $script:currentMs = 0
 $script:steps = @{}
 
@@ -22,17 +26,17 @@ function LogStep(
 
 function Show-Steps() {
     $totalMs = $stopwatch.Elapsed.TotalMilliseconds
-    $script:steps.GetEnumerator() | Sort-Object -Property Value -Descending | 
+    $script:steps.GetEnumerator() | Sort-Object -Property Value -Descending |
     Format-Table @{
-        'Label'      = 'Action' 
+        'Label'      = 'Action'
         'Expression' = { $_.Key }
     },
     @{
-        'Label'      = 'Time (ms)' 
+        'Label'      = 'Time (ms)'
         'Expression' = { $_.Value }
     },
     @{
-        'Label'      = 'Percentage' 
+        'Label'      = 'Percentage'
         'Expression' = { [math]::Round(($_.Value / $totalMs) * 100, 2) }
     }
 }
@@ -50,7 +54,7 @@ LogStep 'Import-Module Terminal-Icons'
 Import-Module posh-git
 LogStep 'Import-Module posh-git'
 
-# Docker Autocomplete 
+# Docker Autocomplete
 Import-Module DockerCompletion
 LogStep 'Import-Module DockerCompletion'
 
@@ -63,7 +67,7 @@ if (Get-Command 'podman.exe' -ErrorAction SilentlyContinue) {
 }
 
 
-oh-my-posh init pwsh --config C:\tools\config\default.omp.json | Invoke-Expression
+oh-my-posh init pwsh --config $configBasePath\default.omp.json | Invoke-Expression
 LogStep 'oh-my-posh init'
 
 # ZOxide for ezpz directory navigation
@@ -86,11 +90,11 @@ LogStep 'zoxide completion'
 #Write-Host -Foreground Green "`n[ZLocation] knows about $((Get-ZLocation).Keys.Count) locations.`n"
 
 # Kubectl autocomplete
-# C:\Users\NELLENFIELD\.pwsh\completions\kubectl.ps1
+# $completionBasePath\kubectl.ps1
 kubectl completion powershell | Out-String | Invoke-Expression
 LogStep 'kubectl completion'
 
-#C:\Users\NELLENFIELD\.pwsh\completions\kustomize.ps1
+# $completionBasePath\kustomize.ps1
 kustomize completion powershell | Out-String | Invoke-Expression
 LogStep 'kustomize completion'
 
@@ -108,7 +112,7 @@ fnm completions --shell powershell | Out-String | Invoke-Expression
 LogStep 'fnm completions'
 
 # Powershell completion for OnePassword
-#C:\Users\NELLENFIELD\.pwsh\completions\op.ps1
+#$completionBasePath\op.ps1
 op completion powershell | Out-String | Invoke-Expression
 LogStep 'op completion'
 
@@ -221,11 +225,6 @@ function Reset-DockerHost {
     $env:DOCKER_HOST = $null
 }
 
-# TODO, fix the msbuild path
-Set-Alias msbuild 'C:\Program Files\Microsoft Visual Studio\2022\Preview\MSBuild\Current\bin\msbuild.exe'
-
-
-
 class RepoCompleter : IArgumentCompleter {
 
     [string] $RepoBasePath
@@ -258,7 +257,7 @@ class RepoCompletionsAttribute : ArgumentCompleterAttribute, IArgumentCompleterF
     [string] $RepoBasePath
 
     RepoCompletionsAttribute() {
-        $this.RepoBasePath = 'C:/work/repos'
+        $this.RepoBasePath = $global:repoBasePath
     }
 
     [IArgumentCompleter] Create() { return [RepoCompleter]::new($this.RepoBasePath) }
@@ -298,8 +297,7 @@ function Get-RepoPath {
     param(
         [string]$repoName
     )
-    # Note: $repoPath = "~\source\repos\$repoName" does not work with vs code for some reason.
-    "$env:USERPROFILE/source/repos/$repoName"
+    "$repoBasePath/$repoName"
 }
 
 function listr {
@@ -312,7 +310,7 @@ function listr {
 #     [cmdletbinding()]
 #     param(
 #         [Parameter(Mandatory = $true, ValueFromPipeline = $true)]
-#         [ValidatePattern("^\w+$")] 
+#         [ValidatePattern("^\w+$")]
 #         [string[]]$command,
 
 #         [Parameter(Mandatory = $false)]
@@ -362,7 +360,7 @@ function listr {
 
 #     #podman is special... We have to fix it up a little bit
 #     Write-Host "`nFixing up podman completions..."
-#     $podmanCompletions = (Get-Completions "podman").Replace('podman.exe','podman').Replace('PODMAN.EXE','PODMAN') 
+#     $podmanCompletions = (Get-Completions "podman").Replace('podman.exe','podman').Replace('PODMAN.EXE','PODMAN')
 #     Set-Completions -command "podman" -completionContent $podmanCompletions
 #     Write-Host "`nDone!"
 # }
@@ -370,7 +368,7 @@ function listr {
 # Set-Alias -Name oc -Value Out-Completion
 
 # Function to find vswhere
-# TODO: Is it better to just add it to the path instead?
+# Honestly, it might be better to just add vswhere, vs, and msbuild to the PATH.
 function Find-VSWhere {
     Write-Information 'Finding vswhere.exe path'
     $vsWherePath = Join-Path ${env:ProgramFiles(x86)} '\Microsoft Visual Studio\Installer\vswhere.exe'
@@ -384,22 +382,17 @@ function Find-VSWhere {
     return $vsWherePath
 }
 
-# Function to wrap calls to vswhere.
-# This function will pass through all arguments to vswhere
 function Invoke-VSWhere {
     $vsWherePath = Find-VSWhere
     & $vsWherePath @args
 }
-
-Set-Alias -Name vswhere -Value Invoke-VSWhere
 
 function Find-VisualStudio() {
     $vsWherePath = Find-VSWhere
 
     Write-Debug 'Finding VisualStudio Installation Location using:'
 
-    # TODO: SSMS breaks this, so we need to find a way to get the devenv.exe path without it.
-    $vsWhereArgs = @('-products', '*', '-property', 'productPath', '-latest')
+    $vsWhereArgs = @('-products', 'Microsoft.VisualStudio.Product.Enterprise', '-property', 'productPath', '-latest')
     Write-Debug "  -> $vsWherePath $vsWhereArgs"
     $vsPath = & $vsWherePath @vsWhereArgs
     if (-not $vsPath) {
@@ -412,17 +405,39 @@ function Find-VisualStudio() {
     return $vsPath
 }
 
-function Open-VisualStudio {
+function Invoke-VisualStudio {
     $vsPath = Find-VisualStudio
     & $vsPath @args
 }
 
-Set-Alias -Name vs -Value Open-VisualStudio
+function Find-MsBuild() {
+    $vsWherePath = Find-VSWhere
 
-LogStep 'The Rest'
-$stopwatch.Stop()
+    Write-Debug 'Finding MSBuild.exe Location using:'
 
-Show-Steps
+    $vsWhereArgs = @('-products', 'Microsoft.VisualStudio.Product.Enterprise', '-property', 'installationPath', '-latest')
+    Write-Debug "  -> $vsWherePath $vsWhereArgs"
+    $vsInstallPath = & $vsWherePath @vsWhereArgs
+    $msbuildPath = Join-Path $vsInstallPath 'MSBuild\Current\Bin\MSBuild.exe'
+    if (-not (Test-Path $msbuildPath)) {
+        Write-Error "Failed to find MSBuild.exe at expected location: $msbuildPath"
+        exit 1
+    }
+
+    Write-Information "Found MSBuild.exe at $msbuildPath"
+
+    return $msbuildPath
+}
+
+function Invoke-MsBuild {
+    $msbuildPath = Find-MsBuild
+    & $msbuildPath @args
+}
+
+Set-Alias -Name vswhere -Value Invoke-VSWhere
+Set-Alias -Name msbuild -Value Invoke-MsBuild
+Set-Alias -Name vs -Value Invoke-VisualStudio
+Set-Alias -Name devenv -Value Invoke-VisualStudio
 
 function Set-Location-RepoRoot {
     $repoPath = git rev-parse --show-toplevel
@@ -431,7 +446,6 @@ function Set-Location-RepoRoot {
 
 Set-Alias -Name rr -Value Set-Location-RepoRoot
 
-#For PowerShell v3
 function gig {
     param(
         [Parameter(Mandatory = $true)]
@@ -441,6 +455,11 @@ function gig {
         Invoke-WebRequest -Uri 'https://www.toptal.com/developers/gitignore/api/list' | Select-Object -ExpandProperty content
     } else {
         $params = ($list | ForEach-Object { [uri]::EscapeDataString($_) }) -join ','
-        Invoke-WebRequest -Uri "https://www.toptal.com/developers/gitignore/api/$params" | Select-Object -ExpandProperty content | Out-File -FilePath $(Join-Path -Path $pwd -ChildPath '.gitignore') -Encoding ascii    
+        Invoke-WebRequest -Uri "https://www.toptal.com/developers/gitignore/api/$params" | Select-Object -ExpandProperty content | Out-File -FilePath $(Join-Path -Path $pwd -ChildPath '.gitignore') -Encoding ascii
     }
 }
+
+LogStep 'The Rest'
+$stopwatch.Stop()
+
+Show-Steps
