@@ -488,3 +488,11 @@ properties:
       settings:
         id: SlackTechnologies.Slack
         source: winget
+    - resource: Microsoft.WinGet.DSC/WinGetPackage
+      id: Youtube music desktop
+      directives:
+        description: Install Youtube music desktop
+        securityContext: elevated
+      settings:
+        id: Ytmdesktop.Ytmdesktop
+        source: winget

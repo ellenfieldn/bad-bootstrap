@@ -1,8 +1,5 @@
 ﻿# Install DSC v3
 #winget install --id  9NVTPZWRC6KQ --source msstore
-# Install NodeJS
-#nvm install lts
-#nvm use lts
 
 # Install Required PowerShell modules
 Install-Module PSReadLine -Force
